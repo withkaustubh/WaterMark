@@ -20,7 +20,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import PhotoViewer from './PhotoViewer';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -37,6 +36,7 @@ interface GalleryModalProps {
     photos: Photo[];
     onDeletePhoto?: (photoId: string) => void;
     onSharePhoto?: (photoUri: string) => void;
+    onViewPhoto?: (photo: Photo) => void;
 }
 
 export default function GalleryModal({
@@ -45,11 +45,11 @@ export default function GalleryModal({
     photos,
     onDeletePhoto,
     onSharePhoto,
+    onViewPhoto,
 }: GalleryModalProps) {
     const translateY = useSharedValue(SCREEN_HEIGHT);
     const backdropOpacity = useSharedValue(0);
     const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
-    const [viewingPhoto, setViewingPhoto] = useState<Photo | null>(null);
 
     useEffect(() => {
         if (visible) {
@@ -84,45 +84,15 @@ export default function GalleryModal({
 
     const handlePhotoPress = (photo: Photo) => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        // Open photo in full-screen viewer
-        setViewingPhoto(photo);
+        if (onViewPhoto) {
+            onViewPhoto(photo);
+        }
     };
 
     const handlePhotoLongPress = (photo: Photo) => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         // Toggle selection on long press
         setSelectedPhoto(selectedPhoto === photo.id ? null : photo.id);
-    };
-
-    const handleViewerClose = () => {
-        setViewingPhoto(null);
-    };
-
-    const handleViewerDelete = () => {
-        if (viewingPhoto && onDeletePhoto) {
-            Alert.alert(
-                'Delete Photo',
-                'Are you sure you want to delete this photo?',
-                [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                        text: 'Delete',
-                        style: 'destructive',
-                        onPress: () => {
-                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                            onDeletePhoto(viewingPhoto.id);
-                            setViewingPhoto(null);
-                        },
-                    },
-                ]
-            );
-        }
-    };
-
-    const handleViewerShare = () => {
-        if (viewingPhoto && onSharePhoto) {
-            onSharePhoto(viewingPhoto.uri);
-        }
     };
 
     const handleDelete = () => {

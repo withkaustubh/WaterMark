@@ -15,9 +15,12 @@ import Animated, {
 import CaptureButton from "../src/components/CaptureButton";
 import PhotoThumbnail from "../src/components/PhotoThumbnail";
 import GalleryModal, { Photo } from "../src/components/GalleryModal";
+import PhotoViewer from "../src/components/PhotoViewer";
 import { PhotoManager } from "../src/utils/PhotoManager";
+import { useKeepAwake } from 'expo-keep-awake';
 
 export default function Index() {
+  useKeepAwake();
   const device = useCameraDevice('back', {
     physicalDevices: [
       'ultra-wide-angle-camera',
@@ -39,6 +42,7 @@ export default function Index() {
   const [latestPhoto, setLatestPhoto] = useState<Photo | null>(null)
   const [allPhotos, setAllPhotos] = useState<Photo[]>([])
   const [showGallery, setShowGallery] = useState(false)
+  const [viewingPhoto, setViewingPhoto] = useState<Photo | null>(null)
 
   // Load photos on mount
   useEffect(() => {
@@ -106,6 +110,27 @@ export default function Index() {
 
   const handleSharePhoto = async (photoUri: string) => {
     await PhotoManager.sharePhoto(photoUri);
+  };
+
+  const handleViewPhoto = (photo: Photo) => {
+    setViewingPhoto(photo);
+  };
+
+  const handleViewerClose = () => {
+    setViewingPhoto(null);
+  };
+
+  const handleViewerDelete = async () => {
+    if (viewingPhoto) {
+      await handleDeletePhoto(viewingPhoto.id);
+      setViewingPhoto(null);
+    }
+  };
+
+  const handleViewerShare = async () => {
+    if (viewingPhoto) {
+      await handleSharePhoto(viewingPhoto.uri);
+    }
   };
 
   if (!hasPermission) return <PermissionPage />
@@ -207,6 +232,15 @@ export default function Index() {
         photos={allPhotos}
         onDeletePhoto={handleDeletePhoto}
         onSharePhoto={handleSharePhoto}
+        onViewPhoto={handleViewPhoto}
+      />
+      {/* Photo Viewer */}
+      <PhotoViewer
+        visible={viewingPhoto !== null}
+        photoUri={viewingPhoto?.uri || null}
+        onClose={handleViewerClose}
+        onDelete={handleViewerDelete}
+        onShare={handleViewerShare}
       />
     </View>
   );

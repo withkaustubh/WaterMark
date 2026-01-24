@@ -11,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Colors } from '../constants/Colors';
 
 interface CaptureButtonProps {
     onPress: () => void;
@@ -119,7 +120,7 @@ export default function CaptureButton({ onPress, disabled = false, isCapturing =
             {/* Outer Ring with Rotating Gradient */}
             <Animated.View style={[styles.outerRing, outerRingStyle]}>
                 <LinearGradient
-                    colors={['#FFFFFF', '#E0E0E0', '#FFFFFF', '#F5F5F5', '#FFFFFF']}
+                    colors={Colors.captureRingGradient as any}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={styles.gradientRing}
@@ -168,7 +169,7 @@ const styles = StyleSheet.create({
         height: 84,
         borderRadius: 42,
         borderWidth: 3,
-        borderColor: '#FFD700',
+        borderColor: Colors.pink,
         backgroundColor: 'transparent',
     },
     innerCircle: {
