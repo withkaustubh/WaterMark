@@ -1,133 +1,167 @@
-// PhotoManager utility for handling photo operations
-// This is a simplified version that works with local file system
-// For full functionality, install: expo-media-library, expo-file-system, expo-sharing
-
-import { Platform } from 'react-native';
+import * as MediaLibrary from 'expo-media-library';
+import * as Sharing from 'expo-sharing';
+import { Alert } from 'react-native';
 
 export interface Photo {
     id: string;
     uri: string;
     filename: string;
-    creationTime?: number;
+    creationTime?: string;
 }
 
 class PhotoManagerClass {
-    private photos: Photo[] = [];
+    private readonly ALBUM_NAME = 'WaterMark';
 
     /**
-     * Save a photo to the local storage
-     * In production, this should save to the device gallery using expo-media-library
+     * Convert MediaLibrary Asset to Photo interface
      */
-    async savePhoto(photoPath: string): Promise<Photo> {
-        const photo: Photo = {
-            id: `photo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            uri: `file://${photoPath}`,
-            filename: `WaterMark_${Date.now()}.jpg`,
-            creationTime: Date.now(),
+    private assetToPhoto(asset: MediaLibrary.Asset): Photo {
+        return {
+            id: asset.id,
+            uri: asset.uri,
+            filename: asset.filename,
+            creationTime: new Date(asset.creationTime).toLocaleString(),
         };
-
-        this.photos.unshift(photo); // Add to beginning
-        return photo;
     }
 
     /**
-     * Get all saved photos
-     * In production, this should query expo-media-library
+     * Request necessary permissions for gallery access
      */
-    async getPhotos(): Promise<Photo[]> {
-        return [...this.photos];
-    }
+    async requestPermissions(): Promise<boolean> {
+        try {
+            const { status, canAskAgain } = await MediaLibrary.requestPermissionsAsync();
 
-    /**
-     * Get the most recent photo
-     */
-    async getLatestPhoto(): Promise<Photo | null> {
-        return this.photos[0] || null;
-    }
+            if (status === 'denied' && !canAskAgain) {
+                Alert.alert('Permission Required', 'Please enable gallery access in system settings.');
+            }
 
-    /**
-     * Delete a photo by ID
-     * In production, this should delete from device gallery
-     */
-    async deletePhoto(photoId: string): Promise<void> {
-        const index = this.photos.findIndex(p => p.id === photoId);
-        if (index !== -1) {
-            this.photos.splice(index, 1);
+            return status === 'granted';
+        } catch (error) {
+            console.error("Permission Error:", error);
+            return false;
         }
     }
 
     /**
-     * Request media library permissions
-     * For production use with expo-media-library:
-     * 
-     * import * as MediaLibrary from 'expo-media-library';
-     * 
-     * async requestPermissions(): Promise<boolean> {
-     *   const { status } = await MediaLibrary.requestPermissionsAsync();
-     *   return status === 'granted';
-     * }
+     * Saves a photo to the permanent app gallery and returns it as Photo
      */
-    async requestPermissions(): Promise<boolean> {
-        // Return true for development
-        // In production, implement actual permission request
-        return true;
+    async saveToGallery(localUri: string): Promise<Photo | null> {
+        try {
+            const hasPermission = await this.requestPermissions();
+            if (!hasPermission) return null;
+
+            // Ensure the URI has proper file:// prefix
+            const formattedUri = localUri.startsWith('file://') ? localUri : `file://${localUri}`;
+
+            // 1. Create the asset
+            const asset = await MediaLibrary.createAssetAsync(formattedUri);
+
+            // 2. Find or create the specific album
+            let album = await MediaLibrary.getAlbumAsync(this.ALBUM_NAME);
+
+            if (!album) {
+                // copyAsset: true avoids the "modify/delete" permission prompt on newer Android
+                await MediaLibrary.createAlbumAsync(this.ALBUM_NAME, asset, true);
+            } else {
+                // copy: true avoids the "modify/delete" permission prompt on newer Android
+                await MediaLibrary.addAssetsToAlbumAsync([asset], album, true);
+            }
+
+            // 3. Return as Photo interface
+            return this.assetToPhoto(asset);
+        } catch (error) {
+            console.error("Save to Gallery Failed:", error);
+            Alert.alert("Error", "Could not save photo to gallery.");
+            return null;
+        }
     }
 
     /**
-     * Save photo to device gallery (production implementation)
-     * Requires expo-media-library and expo-file-system
-     * 
-     * Example implementation:
-     * 
-     * import * as MediaLibrary from 'expo-media-library';
-     * import * as FileSystem from 'expo-file-system';
-     * 
-     * async saveToGallery(photoPath: string): Promise<void> {
-     *   const permission = await this.requestPermissions();
-     *   if (!permission) throw new Error('Permission denied');
-     *   
-     *   const asset = await MediaLibrary.createAssetAsync(photoPath);
-     *   const album = await MediaLibrary.getAlbumAsync('WaterMark');
-     *   
-     *   if (album == null) {
-     *     await MediaLibrary.createAlbumAsync('WaterMark', asset, false);
-     *   } else {
-     *     await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
-     *   }
-     * }
+     * Fetches all photos from the WaterMark album as Photo array
+     * Note: Caller should ensure permissions are granted before calling
      */
-    async saveToGallery(photoPath: string): Promise<void> {
-        console.log('Photo would be saved to gallery:', photoPath);
-        // Implement with expo-media-library when packages are installed
+    async getPhotos(first: number = 20, after?: string): Promise<{ assets: Photo[], endCursor?: string, hasNextPage: boolean }> {
+        try {
+            const album = await MediaLibrary.getAlbumAsync(this.ALBUM_NAME);
+            if (!album) return { assets: [], hasNextPage: false };
+
+            const result = await MediaLibrary.getAssetsAsync({
+                album: album,
+                sortBy: [[MediaLibrary.SortBy.creationTime, false]],
+                first: first,
+                after: after,
+                mediaType: [MediaLibrary.MediaType.photo],
+            });
+
+            return {
+                assets: result.assets.map(asset => this.assetToPhoto(asset)),
+                endCursor: result.endCursor,
+                hasNextPage: result.hasNextPage
+            };
+        } catch (error) {
+            console.error("Fetch Photos Failed:", error);
+            return { assets: [], hasNextPage: false };
+        }
     }
 
     /**
-     * Share a photo using the system share sheet
-     * Requires expo-sharing
-     * 
-     * Example implementation:
-     * 
-     * import * as Sharing from 'expo-sharing';
-     * 
-     * async sharePhoto(photoUri: string): Promise<void> {
-     *   if (!(await Sharing.isAvailableAsync())) {
-     *     alert('Sharing is not available on this device');
-     *     return;
-     *   }
-     *   await Sharing.shareAsync(photoUri);
-     * }
+     * Gets the latest photo from the WaterMark album
+     * Note: Caller should ensure permissions are granted before calling
      */
-    async sharePhoto(photoUri: string): Promise<void> {
-        console.log('Photo would be shared:', photoUri);
-        // Implement with expo-sharing when packages are installed
+    async getLatestPhoto(): Promise<Photo | null> {
+        try {
+            const album = await MediaLibrary.getAlbumAsync(this.ALBUM_NAME);
+            if (!album) return null;
+
+            const result = await MediaLibrary.getAssetsAsync({
+                album: album,
+                sortBy: [[MediaLibrary.SortBy.creationTime, false]],
+                first: 1,
+                mediaType: [MediaLibrary.MediaType.photo],
+            });
+
+            if (result.assets.length > 0) {
+                return this.assetToPhoto(result.assets[0]);
+            }
+
+            return null;
+        } catch (error) {
+            console.error("Get Latest Photo Failed:", error);
+            return null;
+        }
     }
 
     /**
-     * Clear all photos from memory
-     * Useful for testing
+     * Deletes a photo from the system gallery
      */
-    clearAll(): void {
-        this.photos = [];
+    async deletePhoto(assetId: string): Promise<boolean> {
+        try {
+            const success = await MediaLibrary.deleteAssetsAsync([assetId]);
+            return success;
+        } catch (error) {
+            console.error("Delete Failed:", error);
+            return false;
+        }
+    }
+
+    /**
+     * Share a photo using the native system share sheet
+     */
+    async sharePhoto(uri: string): Promise<void> {
+        try {
+            const available = await Sharing.isAvailableAsync();
+            if (!available) {
+                Alert.alert('Error', 'Sharing is not supported on this device');
+                return;
+            }
+
+            // Ensure URI is shared correctly (adding file:// prefix if missing)
+            const formattedUri = uri.startsWith('file://') ? uri : `file://${uri}`;
+            await Sharing.shareAsync(formattedUri);
+        } catch (error) {
+            console.error("Share Failed:", error);
+            Alert.alert("Error", "Could not share photo.");
+        }
     }
 }
 

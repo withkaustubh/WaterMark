@@ -12,10 +12,14 @@ import Animated, {
     useSharedValue,
     useAnimatedStyle,
     withTiming,
+    withSpring,
+    withDecay,
+    cancelAnimation,
     runOnJS,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -34,9 +38,12 @@ export default function PhotoViewer({
     onDelete,
     onShare,
 }: PhotoViewerProps) {
-    const scale = useSharedValue(1);
-    const translateX = useSharedValue(0);
-    const translateY = useSharedValue(0);
+    const scale = useSharedValue(1); // Main scale (used for entrance + zoom)
+    const savedScale = useSharedValue(1);
+    const translateX = useSharedValue(0); // Pan X
+    const translateY = useSharedValue(0); // Pan Y
+    const savedTranslateX = useSharedValue(0);
+    const savedTranslateY = useSharedValue(0);
     const opacity = useSharedValue(0);
     const [showControls, setShowControls] = useState(true);
 
@@ -45,8 +52,11 @@ export default function PhotoViewer({
         if (visible) {
             opacity.value = withTiming(1, { duration: 300 });
             scale.value = 1;
+            savedScale.value = 1;
             translateX.value = 0;
             translateY.value = 0;
+            savedTranslateX.value = 0;
+            savedTranslateY.value = 0;
         } else {
             opacity.value = withTiming(0, { duration: 200 });
         }
@@ -78,6 +88,88 @@ export default function PhotoViewer({
         setShowControls(!showControls);
     };
 
+    // Gestures
+    const pinchGesture = Gesture.Pinch()
+        .onUpdate((e) => {
+            scale.value = savedScale.value * e.scale;
+        })
+        .onEnd(() => {
+            if (scale.value < 1) {
+                scale.value = withSpring(1);
+                savedScale.value = 1;
+            } else {
+                savedScale.value = scale.value;
+            }
+        });
+
+    const panGesture = Gesture.Pan()
+        .maxPointers(1)
+        .onStart(() => {
+            cancelAnimation(translateX);
+            cancelAnimation(translateY);
+            savedTranslateX.value = translateX.value;
+            savedTranslateY.value = translateY.value;
+        })
+        .onUpdate((e) => {
+            if (scale.value > 1) {
+                // Calculate max translation based on scale to keep image on screen
+                const maxTranslateX = (SCREEN_WIDTH * (scale.value - 1)) / 2;
+                const maxTranslateY = (SCREEN_HEIGHT * (scale.value - 1)) / 2;
+
+                const nextX = savedTranslateX.value + e.translationX;
+                const nextY = savedTranslateY.value + e.translationY;
+
+                // Hard clamp during drag for direct control
+                translateX.value = Math.min(Math.max(nextX, -maxTranslateX), maxTranslateX);
+                translateY.value = Math.min(Math.max(nextY, -maxTranslateY), maxTranslateY);
+            }
+        })
+        .onEnd((e) => {
+            if (scale.value > 1) {
+                const maxTranslateX = (SCREEN_WIDTH * (scale.value - 1)) / 2;
+                const maxTranslateY = (SCREEN_HEIGHT * (scale.value - 1)) / 2;
+
+                translateX.value = withDecay({
+                    velocity: e.velocityX,
+                    clamp: [-maxTranslateX, maxTranslateX],
+                    rubberBandEffect: true,
+                });
+
+                translateY.value = withDecay({
+                    velocity: e.velocityY,
+                    clamp: [-maxTranslateY, maxTranslateY],
+                    rubberBandEffect: true,
+                });
+            }
+        });
+
+    // Double tap to zoom
+    const doubleTapGesture = Gesture.Tap()
+        .numberOfTaps(2)
+        .onEnd(() => {
+            if (scale.value > 1.5) {
+                scale.value = withSpring(1);
+                savedScale.value = 1;
+                translateX.value = withSpring(0);
+                translateY.value = withSpring(0);
+                savedTranslateX.value = 0;
+                savedTranslateY.value = 0;
+            } else {
+                scale.value = withSpring(2.5);
+                savedScale.value = 2.5;
+            }
+        });
+
+    // Single tap to toggle controls
+    const singleTapGesture = Gesture.Tap()
+        .onEnd(() => {
+            runOnJS(toggleControls)();
+        });
+
+    const composedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
+    const tapGestures = Gesture.Exclusive(doubleTapGesture, singleTapGesture);
+    const allGestures = Gesture.Race(composedGesture, tapGestures);
+
     const containerStyle = useAnimatedStyle(() => ({
         opacity: opacity.value,
     }));
@@ -100,48 +192,52 @@ export default function PhotoViewer({
             onRequestClose={handleClose}
             statusBarTranslucent
         >
-            <Animated.View style={[styles.container, containerStyle]}>
-                {/* Image */}
-                <Pressable style={StyleSheet.absoluteFill} onPress={toggleControls}>
-                    <Animated.View style={[styles.imageContainer, imageStyle]}>
-                        <Image
-                            source={{ uri: photoUri }}
-                            style={styles.image}
-                            resizeMode="contain"
-                        />
-                    </Animated.View>
-                </Pressable>
-
-                {/* Controls */}
-                {showControls && (
-                    <>
-                        {/* Top Bar */}
-                        <Animated.View style={styles.topBar} entering={undefined}>
-                            <Pressable style={styles.iconButton} onPress={handleClose}>
-                                <Ionicons name="close" size={28} color="white" />
-                            </Pressable>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+                <Animated.View style={[styles.container, containerStyle]}>
+                    {/* Image with Gestures */}
+                    <GestureDetector gesture={allGestures}>
+                        <Animated.View style={[styles.imageContainer, { width: SCREEN_WIDTH, height: SCREEN_HEIGHT }]}>
+                            <Animated.View style={[imageStyle, { flex: 1, width: '100%', height: '100%' }]}>
+                                <Image
+                                    source={{ uri: photoUri }}
+                                    style={styles.image}
+                                    resizeMode="contain"
+                                />
+                            </Animated.View>
                         </Animated.View>
+                    </GestureDetector>
 
-                        {/* Bottom Bar */}
-                        <Animated.View style={styles.bottomBar} entering={undefined}>
-                            {onShare && (
-                                <Pressable style={styles.actionButton} onPress={handleShare}>
-                                    <Ionicons name="share-outline" size={28} color="white" />
-                                    <Text style={styles.actionText}>Share</Text>
+                    {/* Controls */}
+                    {showControls && (
+                        <>
+                            {/* Top Bar */}
+                            <Animated.View style={styles.topBar} entering={undefined}>
+                                <Pressable style={styles.iconButton} onPress={handleClose}>
+                                    <Ionicons name="close" size={28} color="white" />
                                 </Pressable>
-                            )}
-                            {onDelete && (
-                                <Pressable style={styles.actionButton} onPress={handleDelete}>
-                                    <Ionicons name="trash-outline" size={28} color="#FF3B30" />
-                                    <Text style={[styles.actionText, { color: '#FF3B30' }]}>
-                                        Delete
-                                    </Text>
-                                </Pressable>
-                            )}
-                        </Animated.View>
-                    </>
-                )}
-            </Animated.View>
+                            </Animated.View>
+
+                            {/* Bottom Bar */}
+                            <Animated.View style={styles.bottomBar} entering={undefined}>
+                                {onShare && (
+                                    <Pressable style={styles.actionButton} onPress={handleShare}>
+                                        <Ionicons name="share-outline" size={28} color="white" />
+                                        <Text style={styles.actionText}>Share</Text>
+                                    </Pressable>
+                                )}
+                                {onDelete && (
+                                    <Pressable style={styles.actionButton} onPress={handleDelete}>
+                                        <Ionicons name="trash-outline" size={28} color="#FF3B30" />
+                                        <Text style={[styles.actionText, { color: '#FF3B30' }]}>
+                                            Delete
+                                        </Text>
+                                    </Pressable>
+                                )}
+                            </Animated.View>
+                        </>
+                    )}
+                </Animated.View>
+            </GestureHandlerRootView>
         </Modal>
     );
 }

@@ -20,15 +20,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { Photo } from '../utils/PhotoManager';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-export interface Photo {
-    id: string;
-    uri: string;
-    filename: string;
-    creationTime?: number;
-}
 
 interface GalleryModalProps {
     visible: boolean;
@@ -37,6 +31,7 @@ interface GalleryModalProps {
     onDeletePhoto?: (photoId: string) => void;
     onSharePhoto?: (photoUri: string) => void;
     onViewPhoto?: (photo: Photo) => void;
+    onLoadMore?: () => void;
 }
 
 export default function GalleryModal({
@@ -46,6 +41,7 @@ export default function GalleryModal({
     onDeletePhoto,
     onSharePhoto,
     onViewPhoto,
+    onLoadMore,
 }: GalleryModalProps) {
     const translateY = useSharedValue(SCREEN_HEIGHT);
     const backdropOpacity = useSharedValue(0);
@@ -55,8 +51,8 @@ export default function GalleryModal({
         if (visible) {
             // Slide up animation
             translateY.value = withSpring(0, {
-                damping: 30,
-                stiffness: 300,
+                damping: 50,
+                stiffness: 400,
             });
             backdropOpacity.value = withTiming(1, { duration: 300 });
         } else {
@@ -179,6 +175,8 @@ export default function GalleryModal({
                         contentContainerStyle={styles.gridContent}
                         ListEmptyComponent={renderEmptyState}
                         showsVerticalScrollIndicator={false}
+                        onEndReached={onLoadMore}
+                        onEndReachedThreshold={0.5}
                     />
 
                     {/* Action Bar */}

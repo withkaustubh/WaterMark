@@ -25,5 +25,16 @@ export const Colors = {
     border: 'rgba(255, 255, 255, 0.2)',
     active: '#FF00CC',
     success: '#00FF99',
+    gold: '#FFD700',
     error: '#FF3B30',
 };
+
+export const WATERMARK_COLORS = [
+    Colors.gold, // Gold
+    '#FF4444', // Red
+    '#4444FF', // Blue
+    '#FFFFFF', // White
+    '#000000', // Black
+];
+
+export const DEFAULT_WATERMARK_COLOR = Colors.gold;

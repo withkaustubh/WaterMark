@@ -31,7 +31,7 @@ export default function PhotoThumbnail({ photoUri, onPress, isLoading = false }:
         if (photoUri && !hasAppeared) {
             opacity.value = withTiming(1, { duration: 300 });
             translateX.value = withSpring(0, {
-                damping: 15,
+                damping: 30,
                 stiffness: 200,
             });
             setHasAppeared(true);
@@ -42,8 +42,8 @@ export default function PhotoThumbnail({ photoUri, onPress, isLoading = false }:
     useEffect(() => {
         if (photoUri && hasAppeared && previousPhotoUri.current !== null && previousPhotoUri.current !== photoUri) {
             rotateY.value = withSequence(
-                withTiming(90, { duration: 150 }),
-                withTiming(0, { duration: 150 })
+                withTiming(90, { duration: 100 }),
+                withTiming(0, { duration: 100 })
             );
         }
         previousPhotoUri.current = photoUri;
