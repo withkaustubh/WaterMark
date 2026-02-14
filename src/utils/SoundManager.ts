@@ -1,4 +1,5 @@
 import { createAudioPlayer, AudioPlayer } from 'expo-audio';
+import { Audio } from 'expo-av';
 
 // Map of sound files
 const SOUND_FILES = {
@@ -20,14 +21,24 @@ class SoundManagerClass {
     private currentSound: ShutterSound = 'shutter1';
 
     constructor() {
-        // Initialize if needed
+        this.configureAudio();
+    }
+
+    private async configureAudio() {
+        try {
+            await Audio.setAudioModeAsync({
+                playsInSilentModeIOS: true,
+                staysActiveInBackground: false,
+                shouldDuckAndroid: true,
+                playThroughEarpieceAndroid: false,
+            });
+        } catch (error) {
+            console.error('Failed to configure audio session', error);
+        }
     }
 
     async setSound(soundType: ShutterSound) {
         this.currentSound = soundType;
-        // Optionally preload
-        // await this.unloadSound();
-        // await this.loadSound(soundType);
     }
 
     async getSound() {
@@ -35,16 +46,27 @@ class SoundManagerClass {
     }
 
     async playShutterSound() {
+        // Fire and forget - don't await this in critical path
+        this._playInternal();
+    }
+
+    private async _playInternal() {
         try {
-            // Unload previous sound to free resources
+            // If a player exists and is playing, stop it and remove it
             if (this.player) {
-                this.player.remove();
+                try {
+                    this.player.remove();
+                } catch (e) {
+                    // Ignore cleanup errors
+                }
                 this.player = null;
             }
 
             const source = SOUND_FILES[this.currentSound];
             this.player = createAudioPlayer(source);
 
+            // Ensure volume is max
+            this.player.volume = 1.0;
             this.player.play();
 
             // Set up a cleanup when done

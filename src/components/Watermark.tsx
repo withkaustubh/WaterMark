@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import Animated, { useSharedValue, withRepeat, withTiming, useAnimatedStyle, withSequence } from 'react-native-reanimated';
 import { DEFAULT_WATERMARK_COLOR } from '../constants/Colors';
 
 interface WatermarkProps {
@@ -8,11 +9,34 @@ interface WatermarkProps {
     address?: string;
     scale?: number; // For adjusting size if baked image is different resolution
     color?: string;
+    isLocating?: boolean;
 }
 
-const Watermark = ({ date, location, address, scale = 1, color = DEFAULT_WATERMARK_COLOR }: WatermarkProps) => {
+const Watermark = ({ date, location, address, scale = 1, color = DEFAULT_WATERMARK_COLOR, isLocating = false }: WatermarkProps) => {
     // Default to now if no date provided
     const displayDate = date || new Date().toLocaleString();
+
+    // Loading Animation
+    const opacity = useSharedValue(0.4);
+
+    useEffect(() => {
+        if (isLocating) {
+            opacity.value = withRepeat(
+                withSequence(
+                    withTiming(1, { duration: 800 }),
+                    withTiming(0.4, { duration: 800 })
+                ),
+                -1,
+                true
+            );
+        } else {
+            opacity.value = 1; // Reset to full opacity when done
+        }
+    }, [isLocating]);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        opacity: opacity.value,
+    }));
 
     return (
         <View style={[styles.container, { transform: [{ scale }] }]}>
@@ -23,11 +47,20 @@ const Watermark = ({ date, location, address, scale = 1, color = DEFAULT_WATERMA
                 {/* Metadata */}
                 <View style={styles.metadataContainer}>
                     <Text style={styles.metaText}>{displayDate}</Text>
-                    {location && (
-                        <Text style={styles.metaText}>{location}</Text>
-                    )}
-                    {address && (
-                        <Text style={styles.metaText}>{address}</Text>
+
+                    {isLocating && !location ? (
+                        <Animated.Text style={[styles.metaText, styles.loadingText, animatedStyle]}>
+                            Locating...
+                        </Animated.Text>
+                    ) : (
+                        <>
+                            {location && (
+                                <Text style={styles.metaText}>{location}</Text>
+                            )}
+                            {address && (
+                                <Text style={styles.metaText}>{address}</Text>
+                            )}
+                        </>
                     )}
                 </View>
             </View>
@@ -70,7 +103,11 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: '500',
         marginTop: 1,
+    },
+    loadingText: {
+        fontStyle: 'italic',
     }
 });
 
 export default Watermark;
+

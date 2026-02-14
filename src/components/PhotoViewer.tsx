@@ -47,6 +47,22 @@ export default function PhotoViewer({
     const opacity = useSharedValue(0);
     const [showControls, setShowControls] = useState(true);
 
+    // Delete Confirmation State
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const deleteTranslateY = useSharedValue(200);
+
+    useEffect(() => {
+        if (showDeleteConfirm) {
+            deleteTranslateY.value = withTiming(0, { duration: 250 });
+        } else {
+            deleteTranslateY.value = withTiming(200, { duration: 200 });
+        }
+    }, [showDeleteConfirm]);
+
+    const deleteConfirmStyle = useAnimatedStyle(() => ({
+        transform: [{ translateY: deleteTranslateY.value }],
+    }));
+
     // Animate opacity when visible changes
     useEffect(() => {
         if (visible) {
@@ -69,10 +85,16 @@ export default function PhotoViewer({
         });
     };
 
-    const handleDelete = () => {
+    const handleDeletePress = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setShowDeleteConfirm(true);
+    };
+
+    const confirmDelete = () => {
         if (onDelete) {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             onDelete();
+            setShowDeleteConfirm(false);
             handleClose();
         }
     };
@@ -226,7 +248,7 @@ export default function PhotoViewer({
                                     </Pressable>
                                 )}
                                 {onDelete && (
-                                    <Pressable style={styles.actionButton} onPress={handleDelete}>
+                                    <Pressable style={styles.actionButton} onPress={handleDeletePress}>
                                         <Ionicons name="trash-outline" size={28} color="#FF3B30" />
                                         <Text style={[styles.actionText, { color: '#FF3B30' }]}>
                                             Delete
@@ -238,6 +260,35 @@ export default function PhotoViewer({
                     )}
                 </Animated.View>
             </GestureHandlerRootView>
+            {/* Delete Confirmation Overlay */}
+            {showDeleteConfirm && (
+                <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowDeleteConfirm(false)}>
+                    <View style={StyleSheet.absoluteFill} />
+                </Pressable>
+            )}
+
+            {/* Custom Delete Confirmation Slide-Up */}
+            <Animated.View style={[styles.deleteConfirmation, deleteConfirmStyle]}>
+                <View style={styles.deleteConfirmContent}>
+                    <Text style={styles.deleteConfirmTitle}>Delete 1 selected item?</Text>
+                    <Text style={styles.deleteConfirmSub}>This item will be permanently deleted.</Text>
+
+                    <View style={styles.deleteActionRow}>
+                        <Pressable
+                            style={[styles.confirmButton, styles.cancelButton]}
+                            onPress={() => setShowDeleteConfirm(false)}
+                        >
+                            <Text style={styles.cancelText}>Cancel</Text>
+                        </Pressable>
+                        <Pressable
+                            style={[styles.confirmButton, styles.deleteButton]}
+                            onPress={confirmDelete}
+                        >
+                            <Text style={styles.deleteText}>Delete</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </Animated.View>
         </Modal>
     );
 }
@@ -298,4 +349,61 @@ const styles = StyleSheet.create({
         color: 'white',
         marginLeft: 8,
     },
+    deleteConfirmation: {
+        position: 'absolute',
+        bottom: 30,
+        left: 20,
+        right: 20,
+        backgroundColor: '#1C1C1E',
+        borderRadius: 20,
+        padding: 24,
+        zIndex: 100,
+        elevation: 10,
+        shadowColor: 'black',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.5,
+        shadowRadius: 20,
+    },
+    deleteConfirmContent: {
+        alignItems: 'center',
+    },
+    deleteConfirmTitle: {
+        color: 'white',
+        fontSize: 18,
+        fontWeight: '700',
+        marginBottom: 8,
+    },
+    deleteConfirmSub: {
+        color: 'rgba(255, 255, 255, 0.5)',
+        fontSize: 14,
+        marginBottom: 24,
+    },
+    deleteActionRow: {
+        flexDirection: 'row',
+        gap: 12,
+        width: '100%',
+    },
+    confirmButton: {
+        flex: 1,
+        paddingVertical: 14,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    cancelButton: {
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    deleteButton: {
+        backgroundColor: '#FF3B30',
+    },
+    cancelText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    deleteText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '700',
+    }
 });

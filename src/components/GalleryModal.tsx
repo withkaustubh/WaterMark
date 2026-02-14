@@ -17,6 +17,8 @@ import Animated, {
     withSpring,
     withTiming,
     runOnJS,
+    FadeIn,
+    FadeOut,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -28,24 +30,46 @@ interface GalleryModalProps {
     visible: boolean;
     onClose: () => void;
     photos: Photo[];
-    onDeletePhoto?: (photoId: string) => void;
+    onDeletePhotos?: (photoIds: string[]) => void;
     onSharePhoto?: (photoUri: string) => void;
     onViewPhoto?: (photo: Photo) => void;
     onLoadMore?: () => void;
+    sortAscending?: boolean;
+    onSortChange?: (ascending: boolean) => void;
 }
 
 export default function GalleryModal({
     visible,
     onClose,
     photos,
-    onDeletePhoto,
+    onDeletePhotos,
     onSharePhoto,
     onViewPhoto,
     onLoadMore,
+    sortAscending = true,
+    onSortChange,
 }: GalleryModalProps) {
     const translateY = useSharedValue(SCREEN_HEIGHT);
     const backdropOpacity = useSharedValue(0);
-    const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+    const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
+    const isSelectionMode = selectedPhotos.size > 0;
+    const [showSortMenu, setShowSortMenu] = useState(false);
+
+    // Delete Confirmation State
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const deleteTranslateY = useSharedValue(200);
+
+    useEffect(() => {
+        if (showDeleteConfirm) {
+            deleteTranslateY.value = withTiming(0, { duration: 200 }); // Slightly faster for 'quick' feel
+        } else {
+            deleteTranslateY.value = withTiming(200, { duration: 200 });
+        }
+    }, [showDeleteConfirm]);
+
+    const deleteConfirmStyle = useAnimatedStyle(() => ({
+        transform: [{ translateY: deleteTranslateY.value }],
+    }));
 
     useEffect(() => {
         if (visible) {
@@ -59,6 +83,8 @@ export default function GalleryModal({
             // Slide down animation
             translateY.value = withTiming(SCREEN_HEIGHT, { duration: 250 });
             backdropOpacity.value = withTiming(0, { duration: 250 });
+            setShowSortMenu(false); // Close sort menu when closing modal
+            setSelectedPhotos(new Set()); // Reset selection on close
         }
     }, [visible]);
 
@@ -78,51 +104,66 @@ export default function GalleryModal({
         backdropOpacity.value = withTiming(0, { duration: 250 });
     };
 
+    const toggleSelection = (id: string) => {
+        const newSet = new Set(selectedPhotos);
+        if (newSet.has(id)) {
+            newSet.delete(id);
+        } else {
+            newSet.add(id);
+        }
+        setSelectedPhotos(newSet);
+    };
+
     const handlePhotoPress = (photo: Photo) => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        if (onViewPhoto) {
+        if (isSelectionMode) {
+            toggleSelection(photo.id);
+        } else if (onViewPhoto) {
             onViewPhoto(photo);
         }
     };
 
     const handlePhotoLongPress = (photo: Photo) => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        // Toggle selection on long press
-        setSelectedPhoto(selectedPhoto === photo.id ? null : photo.id);
+        toggleSelection(photo.id);
     };
 
     const handleDelete = () => {
-        if (!selectedPhoto || !onDeletePhoto) return;
+        if (selectedPhotos.size === 0 || !onDeletePhotos) return;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setShowDeleteConfirm(true);
+    };
 
-        Alert.alert(
-            'Delete Photo',
-            'Are you sure you want to delete this photo?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: () => {
-                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                        onDeletePhoto(selectedPhoto);
-                        setSelectedPhoto(null);
-                    },
-                },
-            ]
-        );
+    const confirmDelete = () => {
+        if (onDeletePhotos) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            onDeletePhotos(Array.from(selectedPhotos));
+            setSelectedPhotos(new Set());
+            setShowDeleteConfirm(false);
+        }
     };
 
     const handleShare = () => {
-        if (!selectedPhoto || !onSharePhoto) return;
-        const photo = photos.find(p => p.id === selectedPhoto);
+        if (selectedPhotos.size === 0 || !onSharePhoto) return;
+        // Share logic for multiple? 
+        // If single, use original. If multiple, maybe loop or not supported yet?
+        // Let's stick to first one for now or loop if API supports.
+        // PhotoManager.sharePhoto expects string.
+        // For now take the first one or iterate.
+        const firstId = Array.from(selectedPhotos)[0];
+        const photo = photos.find(p => p.id === firstId);
         if (photo) {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             onSharePhoto(photo.uri);
         }
     };
 
+    const cancelSelection = () => {
+        setSelectedPhotos(new Set());
+    };
+
     const renderPhoto = ({ item }: { item: Photo }) => {
-        const isSelected = selectedPhoto === item.id;
+        const isSelected = selectedPhotos.has(item.id);
 
         return (
             <PhotoGridItem
@@ -142,6 +183,19 @@ export default function GalleryModal({
         </View>
     );
 
+    const toggleSortMenu = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setShowSortMenu(!showSortMenu);
+    };
+
+    const handleSortChange = (ascending: boolean) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        if (onSortChange) {
+            onSortChange(ascending);
+        }
+        setShowSortMenu(false);
+    };
+
     return (
         <Modal
             visible={visible}
@@ -160,11 +214,45 @@ export default function GalleryModal({
                 <Animated.View style={[styles.modal, modalStyle]}>
                     {/* Header */}
                     <View style={styles.header}>
+                        <View style={styles.headerActions}>
+                            <Pressable onPress={toggleSortMenu} style={styles.iconButton}>
+                                <Ionicons name="filter" size={24} color="white" />
+                            </Pressable>
+                        </View>
                         <Text style={styles.title}>Gallery</Text>
                         <Pressable onPress={handleClose} style={styles.closeButton}>
                             <Ionicons name="close" size={28} color="white" />
                         </Pressable>
                     </View>
+
+                    {/* Sort Menu Dropdown */}
+                    {showSortMenu && (
+                        <Animated.View
+                            entering={FadeIn.duration(200)}
+                            exiting={FadeOut.duration(200)}
+                            style={styles.sortMenu}
+                        >
+                            <Pressable
+                                style={[styles.sortOption, sortAscending && styles.sortOptionSelected]}
+                                onPress={() => handleSortChange(true)}
+                            >
+                                <Text style={[styles.sortOptionText, sortAscending && styles.sortOptionTextSelected]}>
+                                    Oldest First
+                                </Text>
+                                {sortAscending && <Ionicons name="checkmark" size={20} color="#007AFF" />}
+                            </Pressable>
+                            <View style={styles.sortDivider} />
+                            <Pressable
+                                style={[styles.sortOption, !sortAscending && styles.sortOptionSelected]}
+                                onPress={() => handleSortChange(false)}
+                            >
+                                <Text style={[styles.sortOptionText, !sortAscending && styles.sortOptionTextSelected]}>
+                                    Newest First
+                                </Text>
+                                {!sortAscending && <Ionicons name="checkmark" size={20} color="#007AFF" />}
+                            </Pressable>
+                        </Animated.View>
+                    )}
 
                     {/* Photo Grid */}
                     <FlatList
@@ -180,7 +268,7 @@ export default function GalleryModal({
                     />
 
                     {/* Action Bar */}
-                    {selectedPhoto && (
+                    {isSelectionMode && (
                         <View style={styles.actionBar}>
                             {onSharePhoto && (
                                 <Pressable style={styles.actionButton} onPress={handleShare}>
@@ -188,17 +276,51 @@ export default function GalleryModal({
                                     <Text style={styles.actionText}>Share</Text>
                                 </Pressable>
                             )}
-                            {onDeletePhoto && (
+                            {onDeletePhotos && (
                                 <Pressable style={styles.actionButton} onPress={handleDelete}>
                                     <Ionicons name="trash-outline" size={24} color="#FF3B30" />
-                                    <Text style={[styles.actionText, { color: '#FF3B30' }]}>Delete</Text>
+                                    <Text style={[styles.actionText, { color: '#FF3B30' }]}>
+                                        Delete ({selectedPhotos.size})
+                                    </Text>
                                 </Pressable>
                             )}
                         </View>
                     )}
+
+                    {/* Delete Confirmation Overlay */}
+                    {showDeleteConfirm && (
+                        <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowDeleteConfirm(false)}>
+                            <View style={StyleSheet.absoluteFill} />
+                        </Pressable>
+                    )}
+
+                    {/* Custom Delete Confirmation Slide-Up */}
+                    <Animated.View style={[styles.deleteConfirmation, deleteConfirmStyle]}>
+                        <View style={styles.deleteConfirmContent}>
+                            <Text style={styles.deleteConfirmTitle}>
+                                Delete {selectedPhotos.size} selected item{selectedPhotos.size > 1 ? 's' : ''}?
+                            </Text>
+                            <Text style={styles.deleteConfirmSub}>These items will be permanently deleted.</Text>
+
+                            <View style={styles.deleteActionRow}>
+                                <Pressable
+                                    style={[styles.confirmButton, styles.cancelButton]}
+                                    onPress={() => setShowDeleteConfirm(false)}
+                                >
+                                    <Text style={styles.cancelText}>Cancel</Text>
+                                </Pressable>
+                                <Pressable
+                                    style={[styles.confirmButton, styles.deleteButton]}
+                                    onPress={confirmDelete}
+                                >
+                                    <Text style={styles.deleteText}>Delete</Text>
+                                </Pressable>
+                            </View>
+                        </View>
+                    </Animated.View>
                 </Animated.View>
-            </View>
-        </Modal>
+            </View >
+        </Modal >
     );
 }
 
@@ -279,11 +401,21 @@ const styles = StyleSheet.create({
         paddingBottom: 16,
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+        zIndex: 10,
+    },
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     title: {
         fontSize: 24,
         fontWeight: '700',
         color: 'white',
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        textAlign: 'center',
+        zIndex: -1,
     },
     closeButton: {
         width: 40,
@@ -292,6 +424,56 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         borderRadius: 20,
         backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    iconButton: {
+        width: 40,
+        height: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderRadius: 20,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    sortMenu: {
+        position: 'absolute',
+        top: 70,
+        left: 20,
+        width: 200,
+        backgroundColor: '#2C2C2E',
+        borderRadius: 12,
+        padding: 8,
+        zIndex: 100,
+        shadowColor: "#000",
+        shadowOffset: {
+            width: 0,
+            height: 4,
+        },
+        shadowOpacity: 0.3,
+        shadowRadius: 4.65,
+        elevation: 8,
+    },
+    sortOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 8,
+    },
+    sortOptionSelected: {
+        backgroundColor: 'rgba(0, 122, 255, 0.1)',
+    },
+    sortOptionText: {
+        fontSize: 16,
+        color: 'white',
+    },
+    sortOptionTextSelected: {
+        color: '#007AFF',
+        fontWeight: '600',
+    },
+    sortDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        marginVertical: 4,
     },
     gridContent: {
         padding: 8,
@@ -361,4 +543,63 @@ const styles = StyleSheet.create({
         color: 'white',
         marginLeft: 8,
     },
+    deleteConfirmation: {
+        position: 'absolute',
+        bottom: 30,
+        left: 20,
+        right: 20,
+        backgroundColor: '#1C1C1E',
+        borderRadius: 20,
+        padding: 24,
+        zIndex: 100,
+        elevation: 10,
+        shadowColor: 'black',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.5,
+        shadowRadius: 20,
+    },
+    deleteConfirmContent: {
+        alignItems: 'center',
+    },
+    deleteConfirmTitle: {
+        color: 'white',
+        fontSize: 18,
+        fontWeight: '700',
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    deleteConfirmSub: {
+        color: 'rgba(255, 255, 255, 0.5)',
+        fontSize: 14,
+        marginBottom: 24,
+        textAlign: 'center',
+    },
+    deleteActionRow: {
+        flexDirection: 'row',
+        gap: 12,
+        width: '100%',
+    },
+    confirmButton: {
+        flex: 1,
+        paddingVertical: 14,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    cancelButton: {
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    deleteButton: {
+        backgroundColor: '#FF3B30',
+    },
+    cancelText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    deleteText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '700',
+    }
 });

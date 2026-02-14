@@ -2,7 +2,7 @@ import { View, StyleSheet, AppState } from "react-native";
 import { Camera, useCameraPermission, useCameraDevice } from "react-native-vision-camera"
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused } from "@react-navigation/native";
-import PermissionPage from "../src/components/PermissionPage";
+import PermissionsGuard from "../src/components/PermissionsGuard";
 import NoCameraDeviceError from "../src/components/NoCameraDeviceError";
 import React, { useRef, useState, useEffect } from "react";
 import Animated, {
@@ -23,6 +23,7 @@ import Watermark from "../src/components/Watermark";
 import { LocationManager, LocationData } from "../src/utils/LocationManager";
 import { SkiaPhotoProcessor } from "../src/utils/SkiaPhotoProcessor";
 import { DEFAULT_WATERMARK_COLOR } from "../src/constants/Colors";
+
 import { SoundManager, ShutterSound } from "../src/utils/SoundManager";
 
 // Components
@@ -30,6 +31,7 @@ import TopControlBar from "../src/components/TopControlBar";
 import BottomControlBar from "../src/components/BottomControlBar";
 import SettingsPanel from "../src/components/SettingsPanel";
 import FocusRing from "../src/components/FocusRing";
+import ShutterFlash from "../src/components/ShutterFlash";
 
 // Hooks
 import { useGalleryManagement } from "../src/hooks/useGalleryManagement";
@@ -48,7 +50,7 @@ export default function Index() {
       'telephoto-camera'
     ]
   });
-  const { hasPermission } = useCameraPermission();
+  // Permissions handled by PermissionsGuard
   const isFocused = useIsFocused();
   const [appState, setAppState] = useState(AppState.currentState);
   const isActive = isFocused && appState === "active";
@@ -65,10 +67,12 @@ export default function Index() {
 
   // Watermark State
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
+  const [isLocating, setIsLocating] = useState(true);
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
   const [watermarkColor, setWatermarkColor] = useState(DEFAULT_WATERMARK_COLOR);
   const [selectedSound, setSelectedSound] = useState<ShutterSound>('shutter1');
   const [showSettings, setShowSettings] = useState(false);
+  const [shutterFlashTrigger, setShutterFlashTrigger] = useState(0);
 
   // Gallery Hook
   const {
@@ -82,7 +86,10 @@ export default function Index() {
     loadPhotos,
     loadMorePhotos,
     deletePhoto,
-    sharePhoto
+    deletePhotos,
+    sharePhoto,
+    sortAscending,
+    setSortAscending
   } = useGalleryManagement();
 
   // Focus & Zoom Animation Values
@@ -121,12 +128,17 @@ export default function Index() {
       if (granted) {
         // Initial fetch for immediate display
         const initialLoc = await LocationManager.getCurrentLocation();
-        if (initialLoc) setCurrentLocation(initialLoc);
+        if (initialLoc) {
+          setCurrentLocation(initialLoc);
+        }
+        setIsLocating(false);
 
         // Subscribe for updates
         unsubscribe = await LocationManager.subscribeToLocationUpdates((loc) => {
           setCurrentLocation(loc);
         });
+      } else {
+        setIsLocating(false);
       }
     };
 
@@ -205,18 +217,20 @@ export default function Index() {
 
     setIsCapturing(true);
 
-    // Play Shutter Sound
-    await SoundManager.playShutterSound();
+    // 1. Immediate Feedback (Visual & Audio)
+    setShutterFlashTrigger(prev => prev + 1);
+    SoundManager.playShutterSound(); // Fire & Forget
 
+    // 2. Capture
     try {
       const photo = await camera.current.takePhoto({
         flash: flash,
-        enableShutterSound: false,
+        enableShutterSound: false, // We handle sound manually
       });
 
       console.log('Photo captured:', photo.path);
 
-      // Optimistic Update
+      // 3. Optimistic Update
       const tempPhoto: Photo = {
         id: `temp-${Date.now()}`,
         uri: `file://${photo.path}`,
@@ -225,9 +239,14 @@ export default function Index() {
       };
 
       setLatestPhoto(tempPhoto);
+
+      // Allow next capture sooner? 
+      // Keeping isCapturing true until save might be safer for file integrity, 
+      // but feels slower. Let's release it early for "Pro" feel, 
+      // assuming proper queueing. For now, we release after basic capture.
       setIsCapturing(false);
 
-      // Process in background
+      // 4. Process in background
       processAndSave(photo.path);
 
     } catch (error) {
@@ -313,106 +332,112 @@ export default function Index() {
   }));
 
   // 5. Render
-  if (!hasPermission) return <PermissionPage />;
   if (device == null) return <NoCameraDeviceError />;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={styles.container}>
-        <GestureDetector gesture={composedGesture}>
-          <View style={StyleSheet.absoluteFill}>
-            <ReanimatedCamera
-              ref={camera}
-              device={device}
-              style={StyleSheet.absoluteFill}
-              isActive={isActive}
-              onPreviewStarted={() => setCameraReady(true)}
-              onPreviewStopped={() => setCameraReady(false)}
-              androidPreviewViewType="texture-view"
-              torch={isTorchOn ? 'on' : 'off'}
-              photo={true}
-              animatedProps={animatedProps}
-            />
-
-            {/* Live Watermark Overlay */}
-            {watermarkEnabled && (
-              <Watermark
-                location={currentLocation?.formatted}
-                address={currentLocation?.address}
-                color={watermarkColor}
+    <PermissionsGuard>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={styles.container}>
+          <GestureDetector gesture={composedGesture}>
+            <View style={StyleSheet.absoluteFill}>
+              <ReanimatedCamera
+                ref={camera}
+                device={device}
+                style={StyleSheet.absoluteFill}
+                isActive={isActive}
+                onPreviewStarted={() => setCameraReady(true)}
+                onPreviewStopped={() => setCameraReady(false)}
+                androidPreviewViewType="texture-view"
+                torch={isTorchOn ? 'on' : 'off'}
+                photo={true}
+                animatedProps={animatedProps}
               />
-            )}
 
-            <FocusRing
-              focusX={focusX}
-              focusY={focusY}
-              focusOpacity={focusOpacity}
-              focusScale={focusScale}
-            />
-          </View>
-        </GestureDetector>
+              {/* Live Watermark Overlay */}
+              {watermarkEnabled && (
+                <Watermark
+                  location={currentLocation?.formatted}
+                  address={currentLocation?.address}
+                  color={watermarkColor}
+                  isLocating={isLocating}
+                />
+              )}
 
-        {/* UI Overlay */}
-        <TopControlBar
-          hasFlash={device.hasFlash}
-          hasTorch={device.hasTorch}
-          flash={flash}
-          toggleFlash={toggleFlash}
-          isTorchOn={isTorchOn}
-          toggleTorch={toggleTorch}
-          showSettings={showSettings}
-          toggleSettings={() => setShowSettings(!showSettings)}
-        />
+              <FocusRing
+                focusX={focusX}
+                focusY={focusY}
+                focusOpacity={focusOpacity}
+                focusScale={focusScale}
+              />
 
-        <SettingsPanel
-          visible={showSettings}
-          watermarkEnabled={watermarkEnabled}
-          setWatermarkEnabled={setWatermarkEnabled}
-          watermarkColor={watermarkColor}
-          setWatermarkColor={setWatermarkColor}
-          selectedSound={selectedSound}
-          setSelectedSound={(sound) => {
-            setSelectedSound(sound);
-            SoundManager.setSound(sound);
-          }}
-        />
+              <ShutterFlash trigger={shutterFlashTrigger} />
+            </View>
+          </GestureDetector>
 
-        <BottomControlBar
-          latestPhotoUri={latestPhoto?.uri || null}
-          onGalleryOpen={() => setShowGallery(true)}
-          isCapturing={isCapturing}
-          onCapture={takePhoto}
-          cameraReady={cameraReady}
-          onFlipCamera={toggleCamera}
-        />
+          {/* UI Overlay */}
+          <TopControlBar
+            hasFlash={device.hasFlash}
+            hasTorch={device.hasTorch}
+            flash={flash}
+            toggleFlash={toggleFlash}
+            isTorchOn={isTorchOn}
+            toggleTorch={toggleTorch}
+            showSettings={showSettings}
+            toggleSettings={() => setShowSettings(!showSettings)}
+          />
 
-        {/* Modals */}
-        <GalleryModal
-          visible={showGallery}
-          onClose={() => setShowGallery(false)}
-          photos={allPhotos}
-          onDeletePhoto={deletePhoto}
-          onSharePhoto={sharePhoto}
-          onViewPhoto={setViewingPhoto}
-          onLoadMore={loadMorePhotos}
-        />
+          <SettingsPanel
+            visible={showSettings}
+            watermarkEnabled={watermarkEnabled}
+            setWatermarkEnabled={setWatermarkEnabled}
+            watermarkColor={watermarkColor}
+            setWatermarkColor={setWatermarkColor}
+            selectedSound={selectedSound}
+            setSelectedSound={(sound) => {
+              setSelectedSound(sound);
+              SoundManager.setSound(sound);
+            }}
+          />
 
-        <PhotoViewer
-          visible={viewingPhoto !== null}
-          photoUri={viewingPhoto?.uri || null}
-          onClose={() => setViewingPhoto(null)}
-          onDelete={async () => {
-            if (viewingPhoto) await deletePhoto(viewingPhoto.id);
-          }}
-          onShare={async () => {
-            if (viewingPhoto) await sharePhoto(viewingPhoto.uri);
-          }}
-        />
+          <BottomControlBar
+            latestPhotoUri={latestPhoto?.uri || null}
+            onGalleryOpen={() => setShowGallery(true)}
+            isCapturing={isCapturing}
+            onCapture={takePhoto}
+            cameraReady={cameraReady}
+            onFlipCamera={toggleCamera}
+          />
 
-        {/* Hidden Processor */}
+          {/* Modals */}
+          <GalleryModal
+            visible={showGallery}
+            onClose={() => setShowGallery(false)}
+            photos={allPhotos}
+            onDeletePhotos={deletePhotos}
+            onSharePhoto={sharePhoto}
+            onViewPhoto={setViewingPhoto}
+            onLoadMore={loadMorePhotos}
+            sortAscending={sortAscending}
+            onSortChange={setSortAscending}
+          />
 
-      </View>
-    </GestureHandlerRootView>
+          <PhotoViewer
+            visible={viewingPhoto !== null}
+            photoUri={viewingPhoto?.uri || null}
+            onClose={() => setViewingPhoto(null)}
+            onDelete={async () => {
+              if (viewingPhoto) await deletePhoto(viewingPhoto.id);
+            }}
+            onShare={async () => {
+              if (viewingPhoto) await sharePhoto(viewingPhoto.uri);
+            }}
+          />
+
+          {/* Hidden Processor */}
+
+        </View>
+      </GestureHandlerRootView>
+    </PermissionsGuard>
   );
 }
 

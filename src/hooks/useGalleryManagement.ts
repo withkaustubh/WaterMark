@@ -10,25 +10,26 @@ export const useGalleryManagement = () => {
     const [hasNextPage, setHasNextPage] = useState(false);
     const [endCursor, setEndCursor] = useState<string | undefined>(undefined);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [sortAscending, setSortAscending] = useState(true);
 
     const loadPhotos = useCallback(async () => {
         const hasPermission = await PhotoManager.requestPermissions();
         if (!hasPermission) return;
 
-        const { assets, endCursor: newCursor, hasNextPage: next } = await PhotoManager.getPhotos(20);
+        const { assets, endCursor: newCursor, hasNextPage: next } = await PhotoManager.getPhotos(20, undefined, sortAscending);
         setAllPhotos(assets);
         setEndCursor(newCursor);
         setHasNextPage(next);
 
         const latest = await PhotoManager.getLatestPhoto();
         setLatestPhoto(latest);
-    }, []);
+    }, [sortAscending]);
 
     const loadMorePhotos = async () => {
         if (!hasNextPage || isLoadingMore) return;
 
         setIsLoadingMore(true);
-        const { assets, endCursor: newCursor, hasNextPage: next } = await PhotoManager.getPhotos(20, endCursor);
+        const { assets, endCursor: newCursor, hasNextPage: next } = await PhotoManager.getPhotos(20, endCursor, sortAscending);
 
         setAllPhotos(prev => [...prev, ...assets]);
         setEndCursor(newCursor);
@@ -50,6 +51,11 @@ export const useGalleryManagement = () => {
         }
     };
 
+    const deletePhotos = async (photoIds: string[]) => {
+        await PhotoManager.deletePhotos(photoIds);
+        await loadPhotos();
+    };
+
     const sharePhoto = async (photoUri: string) => {
         await PhotoManager.sharePhoto(photoUri);
     };
@@ -65,6 +71,9 @@ export const useGalleryManagement = () => {
         loadPhotos,
         loadMorePhotos,
         deletePhoto,
-        sharePhoto
+        deletePhotos,
+        sharePhoto,
+        sortAscending,
+        setSortAscending
     };
 };

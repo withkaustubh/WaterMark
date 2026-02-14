@@ -80,14 +80,14 @@ class PhotoManagerClass {
      * Fetches all photos from the WaterMark album as Photo array
      * Note: Caller should ensure permissions are granted before calling
      */
-    async getPhotos(first: number = 20, after?: string): Promise<{ assets: Photo[], endCursor?: string, hasNextPage: boolean }> {
+    async getPhotos(first: number = 20, after?: string, sortAscending: boolean = true): Promise<{ assets: Photo[], endCursor?: string, hasNextPage: boolean }> {
         try {
             const album = await MediaLibrary.getAlbumAsync(this.ALBUM_NAME);
             if (!album) return { assets: [], hasNextPage: false };
 
             const result = await MediaLibrary.getAssetsAsync({
                 album: album,
-                sortBy: [[MediaLibrary.SortBy.creationTime, false]],
+                sortBy: [[MediaLibrary.SortBy.creationTime, sortAscending]],
                 first: first,
                 after: after,
                 mediaType: [MediaLibrary.MediaType.photo],
@@ -140,6 +140,19 @@ class PhotoManagerClass {
             return success;
         } catch (error) {
             console.error("Delete Failed:", error);
+            return false;
+        }
+    }
+
+    /**
+     * Deletes multiple photos from the system gallery
+     */
+    async deletePhotos(assetIds: string[]): Promise<boolean> {
+        try {
+            const success = await MediaLibrary.deleteAssetsAsync(assetIds);
+            return success;
+        } catch (error) {
+            console.error("Batch Delete Failed:", error);
             return false;
         }
     }
