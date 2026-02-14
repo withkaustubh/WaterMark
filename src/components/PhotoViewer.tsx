@@ -3,10 +3,10 @@ import {
     View,
     StyleSheet,
     Pressable,
-    Image,
-    Dimensions,
     Text,
+    useWindowDimensions,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useState, useEffect } from 'react';
 import Animated, {
     useSharedValue,
@@ -20,8 +20,6 @@ import Animated, {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface PhotoViewerProps {
     visible: boolean;
@@ -38,6 +36,7 @@ export default function PhotoViewer({
     onDelete,
     onShare,
 }: PhotoViewerProps) {
+    const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = useWindowDimensions();
     const scale = useSharedValue(1); // Main scale (used for entrance + zoom)
     const savedScale = useSharedValue(1);
     const translateX = useSharedValue(0); // Pan X
@@ -223,7 +222,7 @@ export default function PhotoViewer({
                                 <Image
                                     source={{ uri: photoUri }}
                                     style={styles.image}
-                                    resizeMode="contain"
+                                    contentFit="contain"
                                 />
                             </Animated.View>
                         </Animated.View>
@@ -304,8 +303,8 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     image: {
-        width: SCREEN_WIDTH,
-        height: SCREEN_HEIGHT,
+        width: '100%',
+        height: '100%',
     },
     topBar: {
         position: 'absolute',

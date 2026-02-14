@@ -5,12 +5,12 @@ import {
     Text,
     FlatList,
     Pressable,
-    Image,
     Alert,
-    Dimensions,
     StatusBar,
+    useWindowDimensions,
 } from 'react-native';
-import { useEffect, useState } from 'react';
+import { Image } from 'expo-image';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
@@ -24,7 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Photo } from '../utils/PhotoManager';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
 
 interface GalleryModalProps {
     visible: boolean;
@@ -49,6 +49,7 @@ export default function GalleryModal({
     sortAscending = true,
     onSortChange,
 }: GalleryModalProps) {
+    const { height: SCREEN_HEIGHT } = useWindowDimensions();
     const translateY = useSharedValue(SCREEN_HEIGHT);
     const backdropOpacity = useSharedValue(0);
     const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
@@ -162,7 +163,7 @@ export default function GalleryModal({
         setSelectedPhotos(new Set());
     };
 
-    const renderPhoto = ({ item }: { item: Photo }) => {
+    const renderPhoto = useCallback(({ item }: { item: Photo }) => {
         const isSelected = selectedPhotos.has(item.id);
 
         return (
@@ -173,7 +174,7 @@ export default function GalleryModal({
                 onLongPress={() => handlePhotoLongPress(item)}
             />
         );
-    };
+    }, [selectedPhotos, handlePhotoPress, handlePhotoLongPress]);
 
     const renderEmptyState = () => (
         <View style={styles.emptyState}>
@@ -211,7 +212,7 @@ export default function GalleryModal({
                 </Animated.View>
 
                 {/* Modal Content */}
-                <Animated.View style={[styles.modal, modalStyle]}>
+                <Animated.View style={[styles.modal, { height: SCREEN_HEIGHT * 0.85 }, modalStyle]}>
                     {/* Header */}
                     <View style={styles.header}>
                         <View style={styles.headerActions}>
@@ -332,7 +333,7 @@ interface PhotoGridItemProps {
     onLongPress: () => void;
 }
 
-function PhotoGridItem({ photo, isSelected, onPress, onLongPress }: PhotoGridItemProps) {
+const PhotoGridItem = React.memo(function PhotoGridItem({ photo, isSelected, onPress, onLongPress }: PhotoGridItemProps) {
     const scale = useSharedValue(1);
 
     const handlePressIn = () => {
@@ -362,7 +363,7 @@ function PhotoGridItem({ photo, isSelected, onPress, onLongPress }: PhotoGridIte
             style={styles.gridItem}
         >
             <Animated.View style={animatedStyle}>
-                <Image source={{ uri: photo.uri }} style={styles.gridImage} />
+                <Image source={{ uri: photo.uri }} style={styles.gridImage} contentFit="cover" recyclingKey={photo.id} />
                 {isSelected && (
                     <View style={styles.selectedOverlay}>
                         <Ionicons name="checkmark-circle" size={32} color="#007AFF" />
@@ -371,7 +372,7 @@ function PhotoGridItem({ photo, isSelected, onPress, onLongPress }: PhotoGridIte
             </Animated.View>
         </Pressable>
     );
-}
+});
 
 const styles = StyleSheet.create({
     container: {
@@ -386,7 +387,6 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        height: SCREEN_HEIGHT * 0.85,
         backgroundColor: '#1C1C1E',
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,

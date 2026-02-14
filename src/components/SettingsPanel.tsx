@@ -2,15 +2,6 @@ import React from 'react';
 import { View, Text, StyleSheet, Switch, Pressable } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
-
-interface SettingsPanelProps {
-    visible: boolean;
-    watermarkEnabled: boolean;
-    setWatermarkEnabled: (enabled: boolean) => void;
-    watermarkColor: string;
-    setWatermarkColor: (color: string) => void;
-}
-
 import { Colors, WATERMARK_COLORS } from '../constants/Colors';
 import { ShutterSound, SOUND_OPTIONS } from '../utils/SoundManager';
 

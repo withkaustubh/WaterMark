@@ -15,7 +15,7 @@ interface TopControlBarProps {
     toggleSettings: () => void;
 }
 
-const TopControlBar = ({
+const TopControlBar = React.memo(({
     hasFlash,
     hasTorch,
     flash,
@@ -83,7 +83,7 @@ const TopControlBar = ({
             </TouchableOpacity>
         </Animated.View>
     );
-};
+});
 
 const styles = StyleSheet.create({
     topBar: {
@@ -112,3 +112,4 @@ const styles = StyleSheet.create({
 });
 
 export default TopControlBar;
+

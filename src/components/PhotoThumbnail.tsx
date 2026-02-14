@@ -1,4 +1,5 @@
-import { Pressable, View, StyleSheet, Image } from 'react-native';
+import { Pressable, View, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { useEffect, useState, useRef } from 'react';
 import Animated, {
     useSharedValue,
@@ -111,7 +112,7 @@ export default function PhotoThumbnail({ photoUri, onPress, isLoading = false }:
             <Animated.View style={[styles.container, containerStyle]}>
                 {photoUri ? (
                     <Animated.View style={imageStyle}>
-                        <Image source={{ uri: photoUri }} style={styles.image} />
+                        <Image source={{ uri: photoUri }} style={styles.image} contentFit="cover" />
                     </Animated.View>
                 ) : (
                     <View style={styles.placeholder}>

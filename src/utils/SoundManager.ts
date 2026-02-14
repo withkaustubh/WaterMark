@@ -1,5 +1,4 @@
 import { createAudioPlayer, AudioPlayer } from 'expo-audio';
-import { Audio } from 'expo-av';
 
 // Map of sound files
 const SOUND_FILES = {
@@ -21,20 +20,8 @@ class SoundManagerClass {
     private currentSound: ShutterSound = 'shutter1';
 
     constructor() {
-        this.configureAudio();
-    }
-
-    private async configureAudio() {
-        try {
-            await Audio.setAudioModeAsync({
-                playsInSilentModeIOS: true,
-                staysActiveInBackground: false,
-                shouldDuckAndroid: true,
-                playThroughEarpieceAndroid: false,
-            });
-        } catch (error) {
-            console.error('Failed to configure audio session', error);
-        }
+        // expo-audio's AudioPlayer automatically handles audio session configuration
+        // (playsInSilentModeIOS, ducking, etc.) — no separate configureAudio needed.
     }
 
     async setSound(soundType: ShutterSound) {

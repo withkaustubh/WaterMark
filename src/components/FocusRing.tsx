@@ -1,5 +1,6 @@
 import React from 'react';
 import Animated, { useAnimatedStyle, SharedValue } from 'react-native-reanimated';
+import { Colors } from '../constants/Colors';
 
 interface FocusRingProps {
     focusX: SharedValue<number>;
@@ -17,7 +18,7 @@ const FocusRing = ({ focusX, focusY, focusOpacity, focusScale }: FocusRingProps)
         width: 50,
         height: 50,
         borderWidth: 2,
-        borderColor: '#FFD700',
+        borderColor: Colors.gold,
         borderRadius: 25,
         opacity: focusOpacity.value,
         transform: [{ scale: focusScale.value }],

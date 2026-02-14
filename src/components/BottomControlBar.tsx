@@ -15,7 +15,7 @@ interface BottomControlBarProps {
     onFlipCamera: () => void;
 }
 
-const BottomControlBar = ({
+const BottomControlBar = React.memo(({
     latestPhotoUri,
     onGalleryOpen,
     isCapturing,
@@ -57,7 +57,7 @@ const BottomControlBar = ({
             </TouchableOpacity>
         </Animated.View>
     );
-};
+});
 
 const styles = StyleSheet.create({
     bottomBar: {
@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.2)',
         justifyContent: 'center',
         alignItems: 'center',
-        backdropFilter: 'blur(10px)', // Works on newer iOS/Web, ignored on Android
+
     },
 });
 
